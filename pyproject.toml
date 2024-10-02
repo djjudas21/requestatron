@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "requestatron"
+version = "0.1.0"
+description = "Compare Kubernetes resource requests with actual usage"
+authors = ["Jonathan Gazeley <me@jonathangazeley.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+kubernetes = "^31.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^3.3.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
