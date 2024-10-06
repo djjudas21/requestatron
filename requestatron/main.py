@@ -4,101 +4,9 @@ and restore them to their original scale
 """
 
 import argparse
+from pprint import pprint
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-
-
-def annotate(api, kind: str, name: str, namespace: str, value: str):
-    '''
-    Annotate a kube resource with its original number of replicas
-    '''
-    body = {"metadata": {"annotations": {
-        'kubescaledown/originalReplicas': str(value)}}}
-
-    match kind:
-        case "Deployment":
-            try:
-                resp = api.patch_namespaced_deployment(
-                    name=name, namespace=namespace, body=body
-                )
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->patch_namespaced_deployment: {e}\n")
-        case "StatefulSet":
-            try:
-                resp = api.patch_namespaced_stateful_set(
-                    name=name, namespace=namespace, body=body
-                )
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->patch_namespaced_stateful_set: {e}\n")
-
-    return resp
-
-
-# pylint: disable=too-many-arguments
-def scale(api, kind: str, name: str, namespace: str, from_replicas: int, to_replicas: int):
-    '''
-    Scale a kube resource to a new number of replicas
-    '''
-    print(
-        f"Scaling {kind} {namespace}/{name} from {from_replicas} to {to_replicas} replicas")
-
-    body = {"spec": {"replicas": to_replicas}}
-
-    match kind:
-        case "Deployment":
-            try:
-                resp = api.patch_namespaced_deployment_scale(
-                    name=name, namespace=namespace, body=body
-                )
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->patch_namespaced_deployment_scale: {e}\n")
-        case "StatefulSet":
-            try:
-                resp = api.patch_namespaced_stateful_set_scale(
-                    name=name, namespace=namespace, body=body
-                )
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->patch_namespaced_stateful_set_scale: {e}\n")
-
-    return resp
-
-
-def downscale(api, kind: str, obj, dry_run: bool):
-    '''
-    Handle the downscaling of an object
-    '''
-    # Grab some info from the deployment
-    namespace = obj.metadata.namespace
-    name = obj.metadata.name
-    replicas = int(obj.spec.replicas)
-
-    if replicas != 0 and not dry_run:
-        annotate(api, kind, name, namespace, replicas)
-        scale(api, kind, name, namespace, replicas, 0)
-
-
-def upscale(api, kind: str, obj, dry_run: bool):
-    '''
-    Handle the upscaling of an object
-    '''
-    # Grab some info from the deployment
-    namespace = obj.metadata.namespace
-    name = obj.metadata.name
-    replicas = int(obj.spec.replicas)
-    try:
-        original_replicas = int(
-            obj.metadata.annotations['kubescaledown/originalReplicas'])
-    except IndexError:
-        return
-
-    # Remove the annotation, and scale back up
-    if replicas != original_replicas and not dry_run:
-        annotate(api, kind, name, namespace, '')
-        scale(api, kind, name, namespace, replicas, original_replicas)
 
 # pylint: disable=too-many-branches
 def main():
@@ -108,11 +16,6 @@ def main():
 
     # Read in args
     parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-d', '--down',
-                       help="scale down cluster resources", action='store_true')
-    group.add_argument('-u', '--up',
-                       help="scale up to restore state", action='store_true')
     parser.add_argument(
         '--dry-run', help="don't actually scale anything", action='store_true')
     parser.add_argument('-n', '--namespace',
@@ -126,53 +29,84 @@ def main():
     # connect to cluster
     config.load_kube_config()
     apps_v1 = client.AppsV1Api()
+    core_v1 = client.CoreV1Api()
+    metrics = client.CustomObjectsApi()
+
+    # List pods in all namespaces
+    pods = core_v1.list_pod_for_all_namespaces(watch=False)
+
+    # Establish an output structure
+    output = {}
+
+    for pod in pods.items:
+        # Set up a dict
+        try:
+            tmp = output[pod.metadata.namespace]
+        except KeyError:
+            output[pod.metadata.namespace] = {}
+
+        output[pod.metadata.namespace][pod.metadata.name] = {}
+
+        # Loop on containers in the pod
+        for container in pod.spec.containers:
+            output[pod.metadata.namespace][pod.metadata.name][container.name] = {}
+            if container.resources:
+                if container.resources.limits:
+                    # Memory in Ki, Mi, or Gi
+                    # CPU in m or unltless
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_limits'] = container.resources.limits.get('cpu')
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_limits'] = container.resources.limits.get('memory')
+                if container.resources.requests:
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_requests'] = container.resources.requests.get('cpu')
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_requests'] = container.resources.requests.get('memory')
+
+        # Get metrics for this pod
+        try:
+            podmetrics = metrics.get_namespaced_custom_object("metrics.k8s.io", "v1beta1", pod.metadata.namespace, 'pods', pod.metadata.name)
+        except ApiException:
+            continue
+        #pprint(podmetrics)
+        for container in podmetrics['containers']:
+            #pprint(container['usage'])
+            # Memory always in Ki
+            output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] = container['usage']['memory']
+            # CPU always in n
+            output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] = container['usage']['cpu']
+
+    pprint(output)
+
 
     # Determine whether namespaced or global, and fetch list of Deployments
-    if args.namespace:
-        # do namespaced
-        if args.deployments:
-            try:
-                deployments = apps_v1.list_namespaced_deployment(
-                    namespace=args.namespace)
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->list_namespaced_deployment: {e}\n")
-        if args.statefulsets:
-            try:
-                statefulsets = apps_v1.list_namespaced_stateful_set(
-                    namespace=args.namespace)
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->list_namespaced_stateful_set: {e}\n")
-    else:
-        # do global
-        if args.deployments:
-            try:
-                deployments = apps_v1.list_deployment_for_all_namespaces()
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->list_deployment_for_all_namespaces: {e}\n")
-        if args.statefulsets:
-            try:
-                statefulsets = apps_v1.list_stateful_set_for_all_namespaces()
-            except ApiException as e:
-                print(
-                    f"Exception when calling AppsV1Api->list_stateful_set_for_all_namespaces: {e}\n")
-
-    if args.up:
-        if args.deployments:
-            for deployment in deployments.items:
-                upscale(apps_v1, "Deployment", deployment, args.dry_run)
-        if args.statefulsets:
-            for statefulset in statefulsets.items:
-                upscale(apps_v1, "StatefulSet", statefulset, args.dry_run)
-    elif args.down:
-        if args.deployments:
-            for deployment in deployments.items:
-                downscale(apps_v1, "Deployment", deployment, args.dry_run)
-        if args.statefulsets:
-            for statefulset in statefulsets.items:
-                downscale(apps_v1, "StatefulSet", statefulset, args.dry_run)
+    #if args.namespace:
+    #    # do namespaced
+    #    if args.deployments:
+    #        try:
+    #            deployments = apps_v1.list_namespaced_deployment(
+    #                namespace=args.namespace)
+    #        except ApiException as e:
+    #            print(
+    #                f"Exception when calling AppsV1Api->list_namespaced_deployment: {e}\n")
+    #    if args.statefulsets:
+    #        try:
+    #            statefulsets = apps_v1.list_namespaced_stateful_set(
+    #                namespace=args.namespace)
+    #        except ApiException as e:
+    #            print(
+    #                f"Exception when calling AppsV1Api->list_namespaced_stateful_set: {e}\n")
+    #else:
+    #    # do global
+    #    if args.deployments:
+    #        try:
+    #            deployments = apps_v1.list_deployment_for_all_namespaces()
+    #        except ApiException as e:
+    #            print(
+    #                f"Exception when calling AppsV1Api->list_deployment_for_all_namespaces: {e}\n")
+    #    if args.statefulsets:
+    #        try:
+    #            statefulsets = apps_v1.list_stateful_set_for_all_namespaces()
+    #        except ApiException as e:
+    #            print(
+    #                f"Exception when calling AppsV1Api->list_stateful_set_for_all_namespaces: {e}\n")
 
 if __name__ == '__main__':
     main()
