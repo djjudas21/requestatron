@@ -77,7 +77,6 @@ def main():
 
     # connect to cluster
     config.load_kube_config()
-    apps_v1 = client.AppsV1Api()
     core_v1 = client.CoreV1Api()
     metrics = client.CustomObjectsApi()
 
