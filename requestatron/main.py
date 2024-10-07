@@ -113,9 +113,7 @@ def main():
             podmetrics = metrics.get_namespaced_custom_object("metrics.k8s.io", "v1beta1", pod.metadata.namespace, 'pods', pod.metadata.name)
         except ApiException:
             continue
-        #pprint(podmetrics)
         for container in podmetrics['containers']:
-            #pprint(container['usage'])
             # Memory always in Ki
             output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] = parse_memory(container['usage']['memory'])
             # CPU in n or u
