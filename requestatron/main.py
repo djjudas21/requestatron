@@ -4,6 +4,7 @@ and restore them to their original scale
 """
 
 import argparse
+import json
 from pprint import pprint
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
@@ -132,7 +133,8 @@ def main():
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('memory_limits'):
                 output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits_ratio'] = output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits']
 
-    pprint(output)
+    output_json = json.dumps(output, indent = 4)
+    print(output_json)
 
 
     # Determine whether namespaced or global, and fetch list of Deployments
