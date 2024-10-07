@@ -122,16 +122,16 @@ def main():
 
             # Work out some ratios
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('cpu_requests'):
-                output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_requests_ratio'] = output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_requests']
+                output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_requests_ratio'] = int(100 * output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_requests'])
 
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('cpu_limits'):
-                output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_limits_ratio'] = output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_limits']
+                output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_limits_ratio'] = int(100 * output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_limits'])
 
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('memory_requests'):
-                output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_requests_ratio'] = output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_requests']
+                output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_requests_ratio'] = int(100 * output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_requests'])
 
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('memory_limits'):
-                output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits_ratio'] = output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits']
+                output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits_ratio'] = int(100 * output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits'])
 
     output_json = json.dumps(output, indent = 4)
     print(output_json)
