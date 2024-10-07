@@ -8,6 +8,55 @@ from pprint import pprint
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
+def parse_memory(memory_string):
+    """
+    Memory may be in Ki, Mi or Gi
+    Convert to Ki and strip the suffix
+    """
+
+    if memory_string:
+        if memory_string.endswith('Ki'):
+            truncated_memory = memory_string.replace('Ki', '')
+            integer_memory = int(truncated_memory)
+        elif memory_string.endswith('Mi'):
+            truncated_memory = memory_string.replace('Mi', '')
+            integer_memory = 1024 * int(truncated_memory)
+        elif memory_string.endswith('Gi'):
+            truncated_memory = memory_string.replace('Gi', '')
+            integer_memory = 1024 * 1024 * int(truncated_memory)
+        elif isinstance(memory_string, str):
+            integer_memory = int(memory_string)
+        else:
+            integer_memory = memory_string
+    else:
+        integer_memory = memory_string
+
+    return integer_memory
+
+def parse_cpu(cpustring):
+    """
+    CPU may be integer, float, m, u or n
+    Convert to m and strip the suffix
+    """
+    if cpustring:
+        if cpustring.endswith('m'):
+            truncatedcpu = int(cpustring.replace('m', ''))
+            integercpu = truncatedcpu
+        elif cpustring.endswith('u'):
+            truncatedcpu = int(cpustring.replace('u', ''))
+            integercpu = int(truncatedcpu / 1024)
+        elif cpustring.endswith('n'):
+            truncatedcpu = int(cpustring.replace('n', ''))
+            integercpu = int(truncatedcpu) / (1024 * 1024)
+        elif isinstance(cpustring, str):
+            integercpu = 1024 * int(cpustring)
+        else:
+            integercpu = cpustring
+    else:
+        integercpu = cpustring
+
+    return integercpu
+
 # pylint: disable=too-many-branches
 def main():
     """
@@ -54,11 +103,11 @@ def main():
                 if container.resources.limits:
                     # Memory in Ki, Mi, or Gi
                     # CPU in m or unltless
-                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_limits'] = container.resources.limits.get('cpu')
-                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_limits'] = container.resources.limits.get('memory')
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_limits'] = parse_cpu(container.resources.limits.get('cpu'))
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_limits'] = parse_memory(container.resources.limits.get('memory'))
                 if container.resources.requests:
-                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_requests'] = container.resources.requests.get('cpu')
-                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_requests'] = container.resources.requests.get('memory')
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['cpu_requests'] = parse_cpu(container.resources.requests.get('cpu'))
+                    output[pod.metadata.namespace][pod.metadata.name][container.name]['memory_requests'] = parse_memory(container.resources.requests.get('memory'))
 
         # Get metrics for this pod
         try:
@@ -69,9 +118,9 @@ def main():
         for container in podmetrics['containers']:
             #pprint(container['usage'])
             # Memory always in Ki
-            output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] = container['usage']['memory']
-            # CPU always in n
-            output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] = container['usage']['cpu']
+            output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] = parse_memory(container['usage']['memory'])
+            # CPU in n or u
+            output[pod.metadata.namespace][pod.metadata.name][container['name']]['cpu_usage'] = parse_cpu(container['usage']['cpu'])
 
     pprint(output)
 
