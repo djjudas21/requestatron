@@ -68,12 +68,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--dry-run', help="don't actually scale anything", action='store_true')
+
+    parser.add_argument('-o', '--output', choices=['json', 'csv'], default='json')
+
     parser.add_argument('-n', '--namespace',
                         help="namespace to operate on", type=str)
-    parser.add_argument("--deployments", help="scale Deployments",
-                        default=True, action=argparse.BooleanOptionalAction)
-    parser.add_argument("--statefulsets", help="scale StatefulSets",
-                        default=True, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     # connect to cluster
@@ -133,8 +132,15 @@ def main():
             if output[pod.metadata.namespace][pod.metadata.name][container['name']].get('memory_limits'):
                 output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits_ratio'] = int(100 * output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_usage'] / output[pod.metadata.namespace][pod.metadata.name][container['name']]['memory_limits'])
 
-    output_json = json.dumps(output, indent = 4)
-    print(output_json)
+    if args.output == 'json':
+        output_json = json.dumps(output, indent = 4)
+        print(output_json)
+    elif args.output == 'csv':
+        print('cpu_requests,cpu_limits,cpu_usage,cpu_requests_ratio,cpu_limits_ratio,memory_requests,memory_limits,memory_usage,memory_requests_ratio,memory_limits_ratio')
+        for ns in output:
+            for pod in output[ns]:
+                for container in output[ns][pod]:
+                    print(f"{ns},{pod},{container},{output[ns][pod][container].get('cpu_requests', '')},{output[ns][pod][container].get('cpu_limits', '')},{output[ns][pod][container].get('cpu_usage', '')},{output[ns][pod][container].get('cpu_requests_ratio', '')},{output[ns][pod][container].get('cpu_limits_ratio', '')},{output[ns][pod][container].get('memory_requests', '')},{output[ns][pod][container].get('memory_limits', '')},{output[ns][pod][container].get('memory_usage', '')},{output[ns][pod][container].get('memory_requests_ratio', '')},{output[ns][pod][container].get('memory_limits_ratio', '')}")
 
 
     # Determine whether namespaced or global, and fetch list of Deployments
